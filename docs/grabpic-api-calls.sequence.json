@@ -1,0 +1,634 @@
+{
+  "schema_version": 1,
+  "diagram_type": "sequence",
+  "meta": {
+    "title": "Grabpic API Call Sequence",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "column_fit": "spread",
+    "viewBox": [
+      1640,
+      2840
+    ],
+    "views": [
+      {
+        "id": "signin",
+        "label": "Sign in",
+        "focus": [
+          "ui",
+          "bff",
+          "api",
+          "pg"
+        ],
+        "note": "Credentials go through next-auth; the JWT never reaches browser JS."
+      },
+      {
+        "id": "upload",
+        "label": "Create album + upload",
+        "focus": [
+          "ui",
+          "bff",
+          "api",
+          "pg",
+          "minio"
+        ],
+        "note": "Browser uploads straight to MinIO; the bucket webhook marks media READY."
+      },
+      {
+        "id": "index",
+        "label": "Index album",
+        "focus": [
+          "api",
+          "fastapi",
+          "rq",
+          "worker",
+          "minio",
+          "qdrant"
+        ],
+        "note": "Only POST /album/process/{id} triggers indexing today."
+      },
+      {
+        "id": "ask",
+        "label": "Ask + webhook + socket",
+        "focus": [
+          "ui",
+          "api",
+          "fastapi",
+          "rq",
+          "worker",
+          "qdrant"
+        ],
+        "note": "202 now, answer later via result webhook and STOMP push."
+      }
+    ]
+  },
+  "participants": [
+    {
+      "id": "ui",
+      "type": "frontend",
+      "label": "Browser UI"
+    },
+    {
+      "id": "bff",
+      "type": "frontend",
+      "label": "Next.js routes"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Spring Boot API"
+    },
+    {
+      "id": "pg",
+      "type": "database",
+      "label": "PostgreSQL"
+    },
+    {
+      "id": "minio",
+      "type": "cloud",
+      "label": "MinIO"
+    },
+    {
+      "id": "fastapi",
+      "type": "backend",
+      "label": "FastAPI"
+    },
+    {
+      "id": "rq",
+      "type": "messagebus",
+      "label": "Redis / RQ"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "RQ Worker"
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant"
+    }
+  ],
+  "segments": [
+    {
+      "from": 168,
+      "to": 368,
+      "label": "1 · Sign in"
+    },
+    {
+      "from": 402,
+      "to": 802,
+      "label": "2 · Browse albums"
+    },
+    {
+      "from": 836,
+      "to": 1316,
+      "label": "3 · Create album + upload"
+    },
+    {
+      "from": 1350,
+      "to": 1670,
+      "label": "4 · Index album (manual trigger)"
+    },
+    {
+      "from": 1704,
+      "to": 2744,
+      "label": "5 · Ask in a session"
+    }
+  ],
+  "messages": [
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 190,
+      "label": "LoginForm.signIn → POST /api/auth/callback/credentials",
+      "variant": "emphasis",
+      "note": "LoginForm · signIn()"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 230,
+      "label": "authorize() → POST /api/v1/auth/login",
+      "variant": "emphasis",
+      "note": "auth.ts authorize()"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 270,
+      "label": "SELECT users WHERE email",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "bff",
+      "y": 310,
+      "label": "200 { accessToken }",
+      "variant": "return"
+    },
+    {
+      "from": "bff",
+      "to": "ui",
+      "y": 350,
+      "label": "Set-Cookie next-auth session",
+      "variant": "return",
+      "note": "JWT stays server-side"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 424,
+      "label": "Home useQuery → GET /api/backend/album",
+      "variant": "default",
+      "note": "Home · useQuery(['albums'])"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 464,
+      "label": "GET /api/v1/album + Bearer",
+      "variant": "security",
+      "note": "[...path] proxy adds JWT"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 504,
+      "label": "SELECT albums WHERE owner_id",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 544,
+      "label": "200 Page<Album> (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 584,
+      "label": "Home.openAlbum → GET /api/backend/album/{id} · /gallery · /sessions",
+      "variant": "default",
+      "note": "Home · openAlbum() + useQuery"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 624,
+      "label": "GET /api/v1/album/{id}/…",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 664,
+      "label": "SELECT album, READY media, sessions",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 704,
+      "label": "200 + presigned GET URLs (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "minio",
+      "y": 744,
+      "label": "AlbumGallery img → GET presigned URL",
+      "variant": "default",
+      "note": "AlbumGallery <img>"
+    },
+    {
+      "from": "minio",
+      "to": "ui",
+      "y": 784,
+      "label": "image bytes",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 858,
+      "label": "Home.createAlbum → POST /api/backend/album/init",
+      "variant": "emphasis",
+      "note": "Home · createAlbum()"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 898,
+      "label": "POST /api/v1/album/init",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 938,
+      "label": "INSERT album + media (PENDING)",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 978,
+      "label": "200 albumId + presigned PUT URLs",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "minio",
+      "y": 1018,
+      "label": "uploadFiles → PUT presigned URL × N",
+      "variant": "emphasis",
+      "note": "uploadFiles()"
+    },
+    {
+      "from": "minio",
+      "to": "ui",
+      "y": 1058,
+      "label": "200 OK",
+      "variant": "return"
+    },
+    {
+      "from": "minio",
+      "to": "api",
+      "y": 1098,
+      "label": "webhook → POST /api/v1/webhooks/minio",
+      "variant": "dashed",
+      "note": "bucket ObjectCreated · unauthenticated"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 1138,
+      "label": "StorageWebhook → UPDATE media READY",
+      "variant": "default",
+      "note": "StorageWebhook"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 1178,
+      "label": "Home.createAlbum → POST /api/backend/session",
+      "variant": "default",
+      "note": "Home · createAlbum() first session"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 1218,
+      "label": "POST /api/v1/session",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 1258,
+      "label": "INSERT album_sessions",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 1298,
+      "label": "201 session (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 1372,
+      "label": "POST /album/process/{id} (manual) → SELECT READY media",
+      "variant": "default",
+      "note": "POST /api/v1/album/process/{id} · not called by UI"
+    },
+    {
+      "from": "api",
+      "to": "fastapi",
+      "y": 1412,
+      "label": "AlbumHandlerService → POST /process-album",
+      "variant": "emphasis",
+      "note": "AlbumHandlerService · WebClient"
+    },
+    {
+      "from": "fastapi",
+      "to": "rq",
+      "y": 1452,
+      "label": "enqueue album-processing",
+      "variant": "emphasis"
+    },
+    {
+      "from": "fastapi",
+      "to": "api",
+      "y": 1492,
+      "label": "202 { jobId, QUEUED }",
+      "variant": "return"
+    },
+    {
+      "from": "rq",
+      "to": "worker",
+      "y": 1532,
+      "label": "process_album_job",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worker",
+      "to": "minio",
+      "y": 1572,
+      "label": "GET each original",
+      "variant": "default",
+      "note": "DownloaderService"
+    },
+    {
+      "from": "minio",
+      "to": "worker",
+      "y": 1612,
+      "label": "image bytes",
+      "variant": "return"
+    },
+    {
+      "from": "worker",
+      "to": "qdrant",
+      "y": 1652,
+      "label": "upsert faces + images",
+      "variant": "emphasis",
+      "note": "InsightFace · CLIP · pHash"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 1726,
+      "label": "Home.connectToSession → GET /api/socket-token",
+      "variant": "security",
+      "note": "Home · useEffect connectToSession()"
+    },
+    {
+      "from": "bff",
+      "to": "ui",
+      "y": 1766,
+      "label": "{ accessToken }",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "api",
+      "y": 1806,
+      "label": "SockJS → STOMP CONNECT /ws + Bearer",
+      "variant": "security",
+      "note": "SockJS · checked by StompAuthChannelInterceptor"
+    },
+    {
+      "from": "ui",
+      "to": "api",
+      "y": 1846,
+      "label": "SUBSCRIBE /topic/sessions/{id}/messages",
+      "variant": "security"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 1886,
+      "label": "onConnect.getMessages → GET /api/backend/session/{id}/messages/history",
+      "variant": "default",
+      "note": "onConnect → getMessages()"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 1926,
+      "label": "GET /api/v1/session/{id}/messages/history",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 1966,
+      "label": "200 message[] (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 2006,
+      "label": "Home.sendMessage (photo) → POST /api/backend/media/upload-url",
+      "variant": "default",
+      "note": "Home · sendMessage() · photo attached"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 2046,
+      "label": "POST /api/v1/media/upload-url",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 2086,
+      "label": "INSERT media PRIMARY (PENDING)",
+      "variant": "default"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 2126,
+      "label": "200 mediaId + PUT URL (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "bff",
+      "y": 2166,
+      "label": "Home.sendMessage → POST /api/backend/session/{id}/messages",
+      "variant": "emphasis",
+      "note": "Home · sendMessage()"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "y": 2206,
+      "label": "POST /api/v1/session/{id}/messages",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 2246,
+      "label": "INSERT USER message + media links",
+      "variant": "emphasis"
+    },
+    {
+      "from": "api",
+      "to": "fastapi",
+      "y": 2286,
+      "label": "SessionService → POST /match-face | /find-similar",
+      "variant": "emphasis",
+      "note": "photo → face match · text → CLIP search"
+    },
+    {
+      "from": "fastapi",
+      "to": "rq",
+      "y": 2326,
+      "label": "enqueue face_search | image_search",
+      "variant": "emphasis"
+    },
+    {
+      "from": "fastapi",
+      "to": "api",
+      "y": 2366,
+      "label": "202 { jobId, QUEUED }",
+      "variant": "return"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 2406,
+      "label": "201 USER message (relayed)",
+      "variant": "return"
+    },
+    {
+      "from": "ui",
+      "to": "minio",
+      "y": 2446,
+      "label": "uploadFiles (after send) → PUT primary photo",
+      "variant": "dashed",
+      "note": "uploadFiles() · fired after send"
+    },
+    {
+      "from": "rq",
+      "to": "worker",
+      "y": 2486,
+      "label": "face_search_job | image_search_job",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worker",
+      "to": "minio",
+      "y": 2526,
+      "label": "GET primary photo (face match)",
+      "variant": "default"
+    },
+    {
+      "from": "worker",
+      "to": "qdrant",
+      "y": 2566,
+      "label": "vector search · filter album_id",
+      "variant": "emphasis"
+    },
+    {
+      "from": "qdrant",
+      "to": "worker",
+      "y": 2606,
+      "label": "scored points → mediaIds",
+      "variant": "return"
+    },
+    {
+      "from": "worker",
+      "to": "api",
+      "y": 2646,
+      "label": "webhook → POST /api/v1/webhooks/process",
+      "variant": "dashed",
+      "note": "{ albumId, sessionId, mediaIds } · unauthenticated"
+    },
+    {
+      "from": "api",
+      "to": "pg",
+      "y": 2686,
+      "label": "ProcessingWebhook → INSERT ASSISTANT msg",
+      "variant": "default",
+      "note": "ProcessingWebhook"
+    },
+    {
+      "from": "api",
+      "to": "ui",
+      "y": 2726,
+      "label": "SimpMessagingTemplate → STOMP /topic/sessions/{id}/messages",
+      "variant": "dashed",
+      "note": "SimpMessagingTemplate push"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "slate",
+      "title": "Participants",
+      "items": [
+        "Browser UI: app/page.tsx (Home, AlbumGallery, SessionList) and components/auth/login-form.tsx",
+        "Next.js routes: app/api/auth/[...nextauth], app/api/backend/[...path], app/api/socket-token",
+        "Spring Boot :8081 (/api/v1, /ws) · FastAPI :8002 · RQ queues album-processing, face_search_queue, image_search_queue",
+        "MinIO bucket media-private · Qdrant collections faces and images"
+      ]
+    },
+    {
+      "dot": "cyan",
+      "title": "Reading the Calls",
+      "items": [
+        "Each label starts with the calling component or backend class: Caller → endpoint",
+        "Every /api/backend/* call goes through app/api/backend/[...path]/route.ts, which adds Bearer JWT and relays status + body (\"relayed\")",
+        "Presigned GET/PUT URLs are signed locally by the MinIO SDK; no API→MinIO round-trip"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Webhooks + Socket",
+      "items": [
+        "/api/v1/webhooks/minio and /webhooks/process are permitAll with no signature",
+        "The socket token comes from /api/socket-token; /ws is checked on STOMP CONNECT",
+        "Results arrive only by STOMP push; history is re-fetched on each (re)connect"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Gaps Seen in the Code",
+      "items": [
+        "No UI call triggers POST /album/process/{id}, so indexing is manual (Swagger/Postman)",
+        "sendMessage PUTs the photo after /messages already queued /match-face, so the worker can race the upload",
+        "Schedulers (every 1 min) move PENDING → UPLOADED → READY when the MinIO webhook is missed",
+        "Album indexing never calls back; its webhook is a TODO"
+      ]
+    }
+  ]
+}

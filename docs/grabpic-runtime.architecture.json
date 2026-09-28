@@ -1,0 +1,303 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Grabpic Runtime Architecture",
+    "locale": "en",
+    "quality_profile": "showcase",
+    "viewBox": [
+      1340,
+      680
+    ]
+  },
+  "components": [
+    {
+      "id": "browser",
+      "type": "external",
+      "label": "User Browser",
+      "sublabel": "React UI + SockJS",
+      "pos": [
+        40,
+        300
+      ],
+      "size": [
+        132,
+        62
+      ],
+      "tag": "untrusted"
+    },
+    {
+      "id": "bff",
+      "type": "frontend",
+      "label": "Next.js BFF",
+      "sublabel": "next-auth · /api/backend",
+      "pos": [
+        250,
+        300
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": ":3000"
+    },
+    {
+      "id": "api",
+      "type": "backend",
+      "label": "Spring Boot API",
+      "sublabel": "REST · STOMP · schedulers",
+      "pos": [
+        480,
+        300
+      ],
+      "size": [
+        156,
+        62
+      ],
+      "tag": ":8081"
+    },
+    {
+      "id": "minio",
+      "type": "cloud",
+      "label": "MinIO",
+      "sublabel": "bucket media-private",
+      "pos": [
+        480,
+        90
+      ],
+      "size": [
+        156,
+        62
+      ],
+      "tag": ":9000"
+    },
+    {
+      "id": "postgres",
+      "type": "database",
+      "label": "PostgreSQL 16",
+      "sublabel": "JPA + Flyway",
+      "pos": [
+        480,
+        540
+      ],
+      "size": [
+        156,
+        62
+      ],
+      "tag": ":5432"
+    },
+    {
+      "id": "processor",
+      "type": "backend",
+      "label": "Image Processor",
+      "sublabel": "FastAPI · 202 Accepted",
+      "pos": [
+        720,
+        300
+      ],
+      "size": [
+        150,
+        62
+      ],
+      "tag": ":8002"
+    },
+    {
+      "id": "redis",
+      "type": "messagebus",
+      "label": "Redis 7",
+      "sublabel": "RQ queues + cache",
+      "pos": [
+        940,
+        300
+      ],
+      "size": [
+        140,
+        62
+      ],
+      "tag": ":6379"
+    },
+    {
+      "id": "worker",
+      "type": "backend",
+      "label": "RQ Workers",
+      "sublabel": "InsightFace · CLIP · pHash",
+      "pos": [
+        1150,
+        300
+      ],
+      "size": [
+        160,
+        62
+      ]
+    },
+    {
+      "id": "qdrant",
+      "type": "database",
+      "label": "Qdrant",
+      "sublabel": "face + image vectors",
+      "pos": [
+        1150,
+        540
+      ],
+      "size": [
+        160,
+        62
+      ],
+      "tag": ":6333"
+    }
+  ],
+  "boundaries": [
+    {
+      "kind": "security-group",
+      "label": "app tier · JWT enforced",
+      "wraps": [
+        "bff",
+        "api"
+      ],
+      "pad": 12
+    },
+    {
+      "kind": "region",
+      "label": "internal AI plane · no service auth",
+      "wraps": [
+        "processor",
+        "redis",
+        "worker",
+        "qdrant"
+      ],
+      "pad": 22
+    }
+  ],
+  "connections": [
+    {
+      "from": "browser",
+      "to": "bff",
+      "label": "session cookie",
+      "variant": "emphasis"
+    },
+    {
+      "from": "bff",
+      "to": "api",
+      "label": "Bearer JWT",
+      "variant": "security"
+    },
+    {
+      "from": "api",
+      "to": "processor",
+      "label": "POST jobs",
+      "variant": "emphasis"
+    },
+    {
+      "from": "processor",
+      "to": "redis",
+      "label": "enqueue",
+      "variant": "emphasis"
+    },
+    {
+      "from": "redis",
+      "to": "worker",
+      "label": "dequeue",
+      "variant": "emphasis"
+    },
+    {
+      "from": "worker",
+      "to": "qdrant",
+      "label": "upsert / search",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 90
+    },
+    {
+      "from": "api",
+      "to": "postgres",
+      "label": "SQL",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "labelDy": 90
+    },
+    {
+      "from": "browser",
+      "to": "minio",
+      "label": "presigned PUT",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "left",
+      "via": [
+        [
+          106,
+          121
+        ]
+      ]
+    },
+    {
+      "from": "minio",
+      "to": "api",
+      "label": "ObjectCreated",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "top",
+      "route": "straight",
+      "labelDy": 80
+    },
+    {
+      "from": "worker",
+      "to": "minio",
+      "label": "fetch originals",
+      "variant": "dashed",
+      "fromSide": "top",
+      "toSide": "right",
+      "via": [
+        [
+          1230,
+          121
+        ]
+      ]
+    },
+    {
+      "from": "worker",
+      "to": "api",
+      "label": "result webhook",
+      "variant": "security",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    },
+    {
+      "from": "api",
+      "to": "browser",
+      "label": "STOMP push",
+      "variant": "dashed",
+      "fromSide": "bottom",
+      "toSide": "bottom"
+    }
+  ],
+  "cards": [
+    {
+      "dot": "cyan",
+      "title": "Primary Paths",
+      "items": [
+        "Upload: browser PUTs to a presigned MinIO URL; the bucket webhook marks media READY",
+        "Index: API posts /process-album; a worker embeds faces and images into Qdrant",
+        "Ask: /match-face or /find-similar returns 202; the result webhook is saved and pushed over STOMP"
+      ]
+    },
+    {
+      "dot": "rose",
+      "title": "Trust Boundaries",
+      "items": [
+        "The JWT lives server-side in the next-auth session; the BFF adds it as a Bearer header",
+        "/ws checks the Bearer token in STOMP CONNECT, not in the HTTP handshake",
+        "/api/v1/webhooks/** and /api/v1/redis/** are permitAll with no signature check",
+        "The AI plane, Redis, Qdrant and MinIO trust the network; they use default credentials"
+      ]
+    },
+    {
+      "dot": "amber",
+      "title": "Supporting Detail",
+      "items": [
+        "Schedulers run every minute to reconcile upload status via MinIO object metadata",
+        "Read URLs are MinIO presigned GETs; the Nginx HMAC CDN in infra/ is configured but not wired",
+        "Workers skip media that fail, and album-level failure webhooks are still TODO"
+      ]
+    }
+  ]
+}
